@@ -25,7 +25,7 @@ int main(void)
 	ioctl(packet_socket, SIOCGIFINDEX, &eth_if);
 	struct sockaddr_ll	sa_ll;
 	memset(&sa_ll, 0, sizeof(struct sockaddr_ll));
-	sa_ll.sll_protocol = 0x0806, sa_ll.sll_ifindex = eth_if.ifr_ifindex, sa_ll.sll_halen = 6;
+	sa_ll.sll_protocol = 0x0608, sa_ll.sll_ifindex = eth_if.ifr_ifindex, sa_ll.sll_halen = 6;
 	strcpy(sa_ll.sll_addr, "\xff\xff\xff\xff\xff\xff");
 	char	msg[1526];
 	*((int*)msg) = 0x55555555;
@@ -41,9 +41,8 @@ int main(void)
 	*((int*)(msg+36)) = 0x196b930a;
 	*((int*)(msg+40)) = 0x6afce000, *(msg+44) = 0xa6, *(msg+45) = 0xd0;
 	*((int*)(msg+46)) = 0x016b930a;
-	*((int*)(msg+50)) = 0x645aebcf;
 	while (1) {
 		errn1(sendto(packet_socket, msg+8, 50-8, 0, (struct sockaddr*)&sa_ll, sizeof(struct sockaddr_ll)), "sendto error");
-		sleep(10);
+		sleep(1);
 	}
 }
