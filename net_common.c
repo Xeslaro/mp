@@ -53,6 +53,21 @@ int mk_arp_reply_packet(char *msg, char *mac_dest, char *mac_src, int ip_dest, i
 	*((int*)(msg+38)) = greeting?ip_src:ip_dest;
 	return 42;
 }
+int mk_arp_request_packet(char *msg, char *mac_src, int ip_src, int ip_dest)
+{
+	int	i;
+	for (i=0;i<6;i++)
+		msg[i]=0xff, msg[6+i]=mac_src[i];
+	*((short*)(msg+12)) = 0x0608;
+	*((short*)(msg+14)) = 0x0100;
+	*((short*)(msg+16)) = 0x0008;
+	msg[18]=0x06, msg[19]=0x04;
+	*((short*)(msg+20)) = 0x0100;
+	for (i=0;i<6;i++)
+		msg[22+i] = mac_src[i];
+	*((int*)(msg+28)) = ip_src, *((int*)(msg+38)) = ip_dest;
+	return 42;
+}
 int mk_padt_packet(char *msg, char *mac_dest, char *mac_src, int sid)
 {
 	int	i;
