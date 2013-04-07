@@ -2,15 +2,25 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
-void set_promiscuous(int socket,  char *if_name)
+void leave_promiscuous(int socket, char *if_name)
+{
+	struct ifreq	eth_if;
+	strcpy(eth_if.ifr_name, if_name);
+	ioctl(socket, SIOCGIFFLAGS, &eth_if);
+	eth_if.ifr_flags &= ~IFF_PROMISC;
+	ioctl(socket, SIOCSIFFLAGS, &eth_if);
+}
+int set_promiscuous(int socket,  char *if_name)
 {
 	struct ifreq	eth_if;
 	strcpy(eth_if.ifr_name, if_name);
 	ioctl(socket, SIOCGIFFLAGS, &eth_if);
 	if (!(eth_if.ifr_flags & IFF_PROMISC)) {
-		eth_if.ifr_flags = IFF_PROMISC;
+		eth_if.ifr_flags |= IFF_PROMISC;
 		ioctl(socket, SIOCSIFFLAGS, &eth_if);
+		return 1;
 	}
+	return 0;
 }
 int get_ifindex(int socket, char *if_name)
 {

@@ -5,10 +5,32 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
+#include <signal.h>
 #include "common.h"
+typedef struct send_eth_msg_info {
+	int	socket, len;
+	char	*msg;
+	struct sockaddr_ll	*sa_ll;
+}semi;
+sem_t	sem_info;
+int	f, packet_socket;
+void alarm_handler(int signum)
+{
+	if (f)
+		leave_promiscuous(packet_socket, "eth0");
+	exit(0);
+}
+void* send_eth_packet(void *a)
+{
+	semi	*p = (semi*)a;
+	ok0(sem_wait(&sem_info), "sem_wait error");
+	errn1(sendto(p->socket, p->msg, p->len, 0, (struct sockaddr*)p->sa_ll, sizeof(struct sockaddr_ll)), "sendto error");
+}
 int main(int c, char *z[])
 {
-	int	packet_socket;
 	errn1(packet_socket = socket(AF_PACKET, SOCK_RAW, rev2(0x0806)), "open socket error");
 	struct sockaddr_ll	sa_ll_b, sa_ll_s;
 	sa_ll_b.sll_family = sa_ll_s.sll_family = AF_PACKET;
@@ -17,13 +39,23 @@ int main(int c, char *z[])
 	ok0(bind(packet_socket, (struct sockaddr*)&sa_ll_b, sizeof(struct sockaddr_ll)), "bind error");
 	char	msg[1500+14];
 	int	len = mk_arp_request_packet(msg, "\xcc\xcc\xcc\xcc\xcc\xcc", conv_ip("1.1.1.1"), conv_ip(z[1]));
-	errn1(sendto(packet_socket, msg, len, 0, (struct sockaddr*)&sa_ll_s, sizeof(struct sockaddr_ll)), "sendto error");
+	semi	a;
+	a.socket = packet_socket, a.len = len, a.msg = msg, a.sa_ll = &sa_ll_s;
+	pthread_t	thread_info;
+	ok0(sem_init(&sem_info, 0, 0), "sem_init error");
+	ok0(pthread_create(&thread_info, NULL, send_eth_packet, (void*)&a), "pthread_create error");
+	f = set_promiscuous(packet_socket, "eth0");
+	signal(SIGALRM, alarm_handler);
+	alarm(2);
 	while (1) {
+		ok0(sem_post(&sem_info), "sem_post error");
 		errn1(recvfrom(packet_socket, msg, 1514, 0, NULL, NULL), "recvfrom error");
 		if (*((int*)(msg+28)) == conv_ip(z[1])) {
 			int	i;
 			for (i=0;i<6;i++)
 				printf("%.2x%c", msg[22+i]&0xff, (i+1==6)?'\n':':');
+			if (f)
+				leave_promiscuous(packet_socket, "eth0");
 			return 0;
 		}
 	}
