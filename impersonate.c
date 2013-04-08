@@ -67,7 +67,7 @@ int main(int c, char *z[])
 					puts("yes, its mac address has changed, adjusting...");
 				#endif
 				while (i<6)
-					msg[6+i]=new_mac[i], i++;
+					msg[6+i]=msg[22+i]=msg[32+i]=new_mac[i], i++;
 			}
 			packet_sent=0;
 		}
