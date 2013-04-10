@@ -26,7 +26,7 @@ int main(int c, char *z[])
 	conv_mac(z[2], mac_src);
 	int	len = mk_arp_reply_packet(msg, gate, mac_src, 0, conv_ip(z[1]), 1);
 	struct timespec	t;
-	int	cnt, packet_sent = 0;
+	int	cnt, packet_sent = 0, cnt_no_arp = 0;
 	sscanf(z[3], "%d", &cnt);
 	t.tv_sec = 0, t.tv_nsec = 1000000000/cnt;
 	while (1) {
@@ -68,13 +68,16 @@ int main(int c, char *z[])
 				#endif
 				while (i<6)
 					msg[6+i]=msg[22+i]=msg[32+i]=new_mac[i], i++;
-				packet_sent=0;
-			} else {
-				#ifdef DEBUG
-				puts("arp reply not received, going to sleep...");
-				#endif
-				sleep(60);
-			}
+				packet_sent=0, cnt_no_arp=0;
+			} else
+				if (cnt_no_arp == 120) {
+					#ifdef DEBUG
+					puts("arp reply not received for a significant time, going to sleep...");
+					#endif
+					sleep(60);
+				}
+				else
+					cnt_no_arp++, packet_sent=0;
 		}
 		nanosleep(&t, NULL);
 	}
