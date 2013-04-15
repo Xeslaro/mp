@@ -31,10 +31,10 @@ void* send_eth_packet(void *a)
 }
 int main(int c, char *z[])
 {
-	errn1(packet_socket = socket(AF_PACKET, SOCK_RAW, rev2(0x0806)), "open socket error");
+	errn1(packet_socket = socket(AF_PACKET, SOCK_RAW, rev2(ETH_P_ALL)), "open socket error");
 	struct sockaddr_ll	sa_ll_b, sa_ll_s;
 	sa_ll_b.sll_family = sa_ll_s.sll_family = AF_PACKET;
-	sa_ll_b.sll_protocol = rev2(0x0806), sa_ll_b.sll_ifindex = get_ifindex(packet_socket, "eth0");
+	sa_ll_b.sll_protocol = rev2(ETH_P_ALL), sa_ll_b.sll_ifindex = get_ifindex(packet_socket, "eth0");
 	sa_ll_s.sll_halen = 0x06, sa_ll_s.sll_ifindex = get_ifindex(packet_socket, "eth0"), strcpy(sa_ll_s.sll_addr, "\xff\xff\xff\xff\xff\xff");
 	ok0(bind(packet_socket, (struct sockaddr*)&sa_ll_b, sizeof(struct sockaddr_ll)), "bind error");
 	char	msg[1500+14];
@@ -50,7 +50,7 @@ int main(int c, char *z[])
 	while (1) {
 		ok0(sem_post(&sem_info), "sem_post error");
 		errn1(recvfrom(packet_socket, msg, 1514, 0, NULL, NULL), "recvfrom error");
-		if (*((int*)(msg+28)) == conv_ip(z[1])) {
+		if (*((short*)(msg+12)) == rev2(0x0806) && *((int*)(msg+28)) == conv_ip(z[1])) {
 			int	i;
 			for (i=0;i<6;i++)
 				printf("%.2x%c", msg[22+i]&0xff, (i+1==6)?'\n':':');

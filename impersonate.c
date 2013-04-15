@@ -26,7 +26,7 @@ int main(int c, char *z[])
 	conv_mac(z[2], mac_src);
 	int	len = mk_arp_reply_packet(msg, gate, mac_src, 0, conv_ip(z[1]), 1);
 	struct timespec	t;
-	int	cnt, packet_sent = 0, cnt_no_arp = 0;
+	int	cnt, packet_sent = 0, cnt_no_arp = 120;
 	sscanf(z[3], "%d", &cnt);
 	t.tv_sec = 0, t.tv_nsec = 1000000000/cnt;
 	while (1) {

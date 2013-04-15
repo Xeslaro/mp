@@ -20,7 +20,7 @@ int main(void)
 		puts("msg received:");
 		int	i;
 		for (i=0;i<len;i++)
-			printf("%.2x", msg[i]&0xff);
+			printf("%.2x%c", msg[i]&0xff, (i==len-1)?'\n':' ');
 		putchar('\n');
 	}
 	return 0;
