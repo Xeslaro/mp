@@ -2,6 +2,24 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
+int encap_ppp(short protocol, char *msg)
+{
+	*((short*)(msg-2)) = protocol;
+	return 2;
+}
+int encap_pppoe(char code, short session_id, short len, char *msg)
+{
+	msg[-6] = 0x11, msg[-6+1] = code, *((short*)(msg-6+2)) = session_id, *((short*)(msg-6+4)) = len;
+	return 6;
+}
+int encap_ether(char *dst_mac, char *src_mac, short protocol, char *msg)
+{
+	*((short*)(msg-2)) = protocol;
+	int	i;
+	for (i=0;i<6;i++)
+		msg[-14+i]=dst_mac[i], msg[-14+6+i]=src_mac[i];
+	return 14;
+}
 void leave_promiscuous(int socket, char *if_name)
 {
 	struct ifreq	eth_if;
