@@ -9,8 +9,9 @@
 #include <time.h>
 #include "common.h"
 #define net_if "eth0"
+#define DEBUG
 typedef enum {
-	unseen, pado_sent, pads_lcpconf_sent, ack_received, req_received, pass_waiting, pass_reviewed
+	unseen, pado_sent, pads_sent, req_received, ack_received, pass_reviewed
 }state_enum;
 typedef struct {
 	char		mac[6];
@@ -76,6 +77,9 @@ int main(void)
 					memcpy(sa_ll_s.sll_addr, cli[i].mac, 6);
 					errn1(sendto(packet_socket, h, p - h, 0, (struct sockaddr*)&sa_ll_s, sizeof(struct sockaddr_ll)), "sendto error");
 					cli[i].state = pado_sent;
+					#ifdef DEBUG
+					printf("padi received, cli index %d\n", i);
+					#endif
 				}
 			} else if (pppoe_d[1] == 0x19) {
 				if (i < cli_cnt && cli[i].state == pado_sent) {
@@ -86,14 +90,10 @@ int main(void)
 					h -= encap_ether(cli[i].mac, my_mac, rev2(0x8863), h);
 					memcpy(sa_ll_s.sll_addr, cli[i].mac, 6);
 					errn1(sendto(packet_socket, h, p - h, 0, (struct sockaddr*)&sa_ll_s, sizeof(struct sockaddr_ll)), "sendto error");
-					p = h = pkt+14+1500;
-					p[0] = 0x01, p[1] = 0x00, *((short*)(p+2)) = rev2(0x0008), p[4] = 0x03, p[5] = 0x04, *((short*)(p+6)) = rev2(0xc023);
-					p += 8;
-					h -= encap_ppp(rev2(0xc021), h);
-					h -= encap_pppoe(0x00, rev2(cli[i].session_id), rev2(p-h), h);
-					h -= encap_ether(cli[i].mac, my_mac, rev2(0x8864), h);
-					errn1(sendto(packet_socket, h, p - h, 0, (struct sockaddr*)&sa_ll_s, sizeof(struct sockaddr_ll)), "sendto error");
-					cli[i].state = pads_lcpconf_sent;
+					#ifdef DEBUG
+					printf("pads sent for cli %d\n", i);
+					#endif
+					cli[i].state = pads_sent;
 				}
 			}
 		} else if (ether_protocol == rev2(0x8864)) {
@@ -102,12 +102,12 @@ int main(void)
 			if (i < cli_cnt) {
 				short	ppp_protocol = *((short*)pppoe_payload);
 				if (ppp_protocol == rev2(0xc021)) {
-					if (ppp_payload[0] == 0x02) {
-						if (cli[i].state == pads_lcpconf_sent)
-							cli[i].state = ack_received;
-						else if (cli[i].state == req_received)
-							cli[i].state = pass_waiting;
-					} else if (ppp_payload[0] == 0x01) {
+					if (ppp_payload[0] == 0x02 && cli[i].state == req_received) {
+						cli[i].state = ack_received;
+						#ifdef DEBUG
+						printf("lcp ack received for cli %d\n", i);
+						#endif
+					} else if (ppp_payload[0] == 0x01 && cli[i].state == pads_sent) {
 						char	*p = pkt+14+1500, *h = p;
 						memcpy(p, pppoe_s, msg + len - pppoe_s);
 						p[6+2] = 0x02;
@@ -115,11 +115,28 @@ int main(void)
 						h -= encap_ether(cli[i].mac, my_mac, rev2(0x8864), h);
 						memcpy(sa_ll_s.sll_addr, cli[i].mac, 6);
 						errn1(sendto(packet_socket, h, p - h, 0, (struct sockaddr*)&sa_ll_s, sizeof(struct sockaddr_ll)), "sendto error");
-						if (cli[i].state == pads_lcpconf_sent)
-							cli[i].state = req_received;
-						else if (cli[i].state == ack_received)
-							cli[i].state = pass_waiting;
+						cli[i].state = req_received;
+						#ifdef DEBUG
+						printf("lcp conf received for cli %d\n", i);
+						int	k, opt_len = rev2(*((short*)(ppp_payload+2))) - 4;
+						for (k=0;k<opt_len;k++)
+							printf("%.2x%c", ppp_payload[4+k] & 0xff, (k==opt_len-1)?'\n':' ');
+						#endif
+						p = h = pkt+14+1500;
+						p[0] = 0x01, p[1] = 0x00, *((short*)(p+2)) = rev2(0x0008), p[4] = 0x03, p[5] = 0x04, *((short*)(p+6)) = rev2(0xc023);
+						p += 8;
+						h -= encap_ppp(rev2(0xc021), h);
+						h -= encap_pppoe(0x00, rev2(cli[i].session_id), rev2(p-h), h);
+						h -= encap_ether(cli[i].mac, my_mac, rev2(0x8864), h);
+						errn1(sendto(packet_socket, h, p - h, 0, (struct sockaddr*)&sa_ll_s, sizeof(struct sockaddr_ll)), "sendto error");
+						#ifdef DEBUG
+						printf("lcpconf sent for cli %d\n", i);
+						#endif
 					}
+					#ifdef DEBUG
+					else if (ppp_payload[0] == 0x03 || ppp_payload[0] == 0x04)
+						printf("lcp rej-nak received for cli %d\n", i);
+					#endif
 				} else if (ppp_protocol == rev2(0xc023) && cli[i].state != pass_reviewed) {
 					char	*id = ppp_payload + 5;
 					int	k;
@@ -129,6 +146,8 @@ int main(void)
 					char	*pass = ppp_payload + 5 + ppp_payload[4] + 1;
 					for (k=0;k<ppp_payload[5 + ppp_payload[4]];k++)
 						putchar(pass[k]);
+					for (k=0;k<6;k++)
+						printf("%c%.2x", k?':':' ', cli[i].mac[k] & 0xff);
 					putchar('\n');
 					cli[i].state = pass_reviewed;
 				}
