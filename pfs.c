@@ -68,42 +68,44 @@ int main(void)
 	int	fifo_fd;
 	errn1(fifo_fd = open("/home/Oralsex/pfs_fifo", O_RDONLY | O_NONBLOCK), "open fifo error");
 	set_promiscuous(packet_socket, net_if);
+	char	umac[6], qemu_mac[6], gate_mac[6], using=0;
+	short	sid;
 	while (1) {
+		char	*p = buf;
+		int	ret;
+		while ((ret = read(fifo_fd, p, 1)) == 1) p++;
+		if (ret == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+			perror("read error");
+			exit(-1);
+		}
+		if (p > buf)
+			if (buf[0] == 'r') {
+				char	r_mac[6];
+				conv_mac(buf+2, r_mac);
+				int	r_index = cli_index(r_mac, cli, cli_cnt);
+				if (r_index < cli_cnt)
+					cli[cli_cnt].state = unseen;
+				#ifdef DEBUG
+				printf("reset state to unseen for client index %d\n", r_index);
+				#endif
+			} else if (buf[0] == 'u') {
+				using = 1;
+				conv_mac(buf+2, umac);
+				conv_mac(buf+20, qemu_mac);
+				conv_mac(buf+38, gate_mac);
+				sscanf(buf+46, "%hx", &sid);
+				#ifdef DEBUG
+				puts("processed using request");
+				#endif
+			}
 		int	len;
 		char	msg[1500+14], pkt[14+1500+1500], *my_mac = "\xcc\xcc\xcc\xcc\xcc\xcc";
-		char	umac[6], qemu_mac[6], gate_mac[6], using=0;
-		short	sid;
 		errn1(len = recvfrom(packet_socket, msg, 1514, 0, NULL, NULL), "recvfrom error");
 		short	ether_protocol = *((short*)(msg+12));
 		if (ether_protocol == rev2(0x8863)) {
 			char	*pppoe_d = msg+14, *pppoe_payload = pppoe_d + 6;
 			i = cli_index(msg+6, cli, cli_cnt);
 			if (pppoe_d[1] == 0x09) {
-				if (read(fifo_fd, buf, 256) == -1) {
-					if (errno != EAGAIN && errno != EWOULDBLOCK) {
-						perror("read error");
-						exit(-1);
-					}
-				} else
-					if (buf[0] == 'r') {
-						char	r_mac[6];
-						conv_mac(buf+2, r_mac);
-						int	r_index = cli_index(r_mac, cli, cli_cnt);
-						if (r_index < cli_cnt)
-							cli[cli_cnt].state = unseen;
-						#ifdef DEBUG
-						printf("reset state to unseen for client index %d\n", r_index);
-						#endif
-					} else if (buf[0] == 'u') {
-						using = 1;
-						conv_mac(buf+2, umac);
-						conv_mac(buf+20, qemu_mac);
-						conv_mac(buf+38, gate_mac);
-						sscanf(buf+46, "%hx", &sid);
-						#ifdef DEBUG
-						puts("processed using request");
-						#endif
-					}
 				if (using && i < cli_cnt && !memcmp(cli[i].mac, umac, 6)) {
 					char	*p = pkt+14+1500, *h = pkt+14+1500;
 					p[0] = 0x05, p[1] = 0xcc, *((short*)(p+2)) = rev2(0x0004); p+=4;
