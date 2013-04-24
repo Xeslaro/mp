@@ -12,7 +12,7 @@ int main(int c, char *z[])
 {
 	int	packet_socket;
 	errn1(packet_socket = socket(AF_PACKET, SOCK_RAW, rev2(0x8864)), "socket error");
-	char	pkt[14+1500+1500], *p = pkt+1500, *h = pkt+1500;
+	char	pkt[14+1500+1500], *p = pkt+14+1500, *h = pkt+14+1500;
 	p[0] = 0x05, p[1] = 0xcc, *((short*)(p+2)) = rev2(0x0004); p+=4;
 	h -= encap_ppp(rev2(0xc021), h);
 	short	session_id;

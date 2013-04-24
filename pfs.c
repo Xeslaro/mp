@@ -1,4 +1,6 @@
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <netpacket/packet.h>
 #include <net/ethernet.h>
@@ -52,16 +54,69 @@ int main(void)
 	int		i, cli_cnt=0;
 	for (i=0;i<256-3;i++)
 		cli[i].state = unseen;
+	char	buf[256];
+	while (fgets(buf, 256, stdin) != NULL)
+		if (buf[0] == '1') {
+			cli[cli_cnt].state = pass_reviewed;
+			conv_mac(buf+2, cli[cli_cnt].mac);
+			cli_cnt++;
+			#ifdef DEBUG
+			printf("added %s", buf+2);
+			#endif
+		}
+	errn1(mkfifo("/home/Oralsex/pfs_fifo", 0600), "mkfifo error");
+	int	fifo_fd;
+	errn1(fifo_fd = open("/home/Oralsex/pfs_fifo", O_RDONLY | O_NONBLOCK), "open fifo error");
 	set_promiscuous(packet_socket, net_if);
 	while (1) {
 		int	len;
 		char	msg[1500+14], pkt[14+1500+1500], *my_mac = "\xcc\xcc\xcc\xcc\xcc\xcc";
+		char	umac[6], qemu_mac[6], gate_mac[6], using=0;
+		short	sid;
 		errn1(len = recvfrom(packet_socket, msg, 1514, 0, NULL, NULL), "recvfrom error");
 		short	ether_protocol = *((short*)(msg+12));
 		if (ether_protocol == rev2(0x8863)) {
 			char	*pppoe_d = msg+14, *pppoe_payload = pppoe_d + 6;
 			i = cli_index(msg+6, cli, cli_cnt);
 			if (pppoe_d[1] == 0x09) {
+				if (read(fifo_fd, buf, 256) == -1) {
+					if (errno != EAGAIN && errno != EWOULDBLOCK) {
+						perror("read error");
+						exit(-1);
+					}
+				} else
+					if (buf[0] == 'r') {
+						char	r_mac[6];
+						conv_mac(buf+2, r_mac);
+						int	r_index = cli_index(r_mac, cli, cli_cnt);
+						if (r_index < cli_cnt)
+							cli[cli_cnt].state = unseen;
+						#ifdef DEBUG
+						printf("reset state to unseen for client index %d\n", r_index);
+						#endif
+					} else if (buf[0] == 'u') {
+						using = 1;
+						conv_mac(buf+2, umac);
+						conv_mac(buf+20, qemu_mac);
+						conv_mac(buf+38, gate_mac);
+						sscanf(buf+46, "%hx", &sid);
+						#ifdef DEBUG
+						puts("processed using request");
+						#endif
+					}
+				if (using && i < cli_cnt && !memcmp(cli[i].mac, umac, 6)) {
+					char	*p = pkt+14+1500, *h = pkt+14+1500;
+					p[0] = 0x05, p[1] = 0xcc, *((short*)(p+2)) = rev2(0x0004); p+=4;
+					h -= encap_ppp(rev2(0xc021), h);
+					h -= encap_pppoe(0x00, rev2(sid), rev2(p-h), h);
+					h -= encap_ether(gate_mac, qemu_mac, rev2(0x8864), h);
+					memcpy(sa_ll_s.sll_addr, gate_mac, 6);
+					errn1(sendto(packet_socket, h, p-h, 0, (struct sockaddr*)&sa_ll_s, sizeof(struct sockaddr_ll)), "sendto error");
+					using = 0;
+					#ifdef DEBUG
+					puts("the owner of the user&pass we're using is calling, sent lcp terminate request");
+					#endif
+				}
 				if (i == cli_cnt || cli[i].state!=pass_reviewed) {
 					if (i == cli_cnt)
 						memcpy(cli[cli_cnt++].mac, msg+6, 6);
