@@ -20,7 +20,7 @@ int	f, packet_socket;
 void alarm_handler(int signum)
 {
 	if (f)
-		leave_promiscuous(packet_socket, "eth0");
+		leave_promiscuous(packet_socket, z[2]);
 	exit(0);
 }
 void* send_eth_packet(void *a)
@@ -34,8 +34,8 @@ int main(int c, char *z[])
 	errn1(packet_socket = socket(AF_PACKET, SOCK_RAW, rev2(ETH_P_ALL)), "open socket error");
 	struct sockaddr_ll	sa_ll_b, sa_ll_s;
 	sa_ll_b.sll_family = sa_ll_s.sll_family = AF_PACKET;
-	sa_ll_b.sll_protocol = rev2(ETH_P_ALL), sa_ll_b.sll_ifindex = get_ifindex(packet_socket, "eth0");
-	sa_ll_s.sll_halen = 0x06, sa_ll_s.sll_ifindex = get_ifindex(packet_socket, "eth0"), strcpy(sa_ll_s.sll_addr, "\xff\xff\xff\xff\xff\xff");
+	sa_ll_b.sll_protocol = rev2(ETH_P_ALL), sa_ll_b.sll_ifindex = get_ifindex(packet_socket, z[2]);
+	sa_ll_s.sll_halen = 0x06, sa_ll_s.sll_ifindex = get_ifindex(packet_socket, z[2]), strcpy(sa_ll_s.sll_addr, "\xff\xff\xff\xff\xff\xff");
 	ok0(bind(packet_socket, (struct sockaddr*)&sa_ll_b, sizeof(struct sockaddr_ll)), "bind error");
 	char	msg[1500+14];
 	int	len = mk_arp_request_packet(msg, "\xcc\xcc\xcc\xcc\xcc\xcc", conv_ip("1.1.1.1"), conv_ip(z[1]));
@@ -44,7 +44,7 @@ int main(int c, char *z[])
 	pthread_t	thread_info;
 	ok0(sem_init(&sem_info, 0, 0), "sem_init error");
 	ok0(pthread_create(&thread_info, NULL, send_eth_packet, (void*)&a), "pthread_create error");
-	f = set_promiscuous(packet_socket, "eth0");
+	f = set_promiscuous(packet_socket, z[2]);
 	signal(SIGALRM, alarm_handler);
 	alarm(2);
 	while (1) {
@@ -55,7 +55,7 @@ int main(int c, char *z[])
 			for (i=0;i<6;i++)
 				printf("%.2x%c", msg[22+i]&0xff, (i+1==6)?'\n':':');
 			if (f)
-				leave_promiscuous(packet_socket, "eth0");
+				leave_promiscuous(packet_socket, z[2]);
 			return 0;
 		}
 	}
