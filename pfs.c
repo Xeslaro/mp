@@ -1,3 +1,4 @@
+#include <math.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -20,6 +21,9 @@ typedef struct {
 	state_enum	state;
 	short		session_id;
 }cli_info;
+typedef struct {
+	int		size, index;
+}usr_info;
 int cli_index(char *mac, cli_info *cli, int cli_cnt)
 {
 	int	i;
@@ -50,25 +54,36 @@ int main(void)
 	sa_ll_b.sll_family = AF_PACKET, sa_ll_b.sll_protocol = rev2(ETH_P_ALL), sa_ll_b.sll_ifindex = get_ifindex(packet_socket, net_if);
 	sa_ll_s.sll_family = AF_PACKET, sa_ll_s.sll_halen = 6, sa_ll_s.sll_ifindex = sa_ll_b.sll_ifindex;
 	ok0(bind(packet_socket, (struct sockaddr*)&sa_ll_b, sizeof(struct sockaddr_ll)), "bind error");
-	cli_info	cli[256-3];
+	cli_info	cli[256];
 	int		i, cli_cnt=0;
-	for (i=0;i<256-3;i++)
+	for (i=0;i<256;i++)
 		cli[i].state = unseen;
-	char	buf[256];
-	while (fgets(buf, 256, stdin) != NULL)
-		if (buf[0] == '1') {
+	char		buf[256];
+	usr_info	usr[256];
+	int		usr_cnt=0;
+	while (fgets(buf, 256, stdin) != NULL) {
+		int	size;
+		sscanf(buf, "%d", &size);
+		if (!size)	continue;
+		usr[usr_cnt].index = cli_cnt;
+		usr[usr_cnt].size = size;
+		int	offset = 1 + floor(log10(size)) + 1;
+		for (i=0;i<size;i++) {
 			cli[cli_cnt].state = pass_reviewed;
-			conv_mac(buf+2, cli[cli_cnt].mac);
+			conv_mac(buf+offset+18*i, cli[cli_cnt].mac);
 			cli_cnt++;
-			#ifdef DEBUG
-			printf("added %s", buf+2);
-			#endif
 		}
+		usr_cnt++;
+		#ifdef DEBUG
+		printf("added %d info for %s", size, buf+offset);
+		#endif
+	}
 	errn1(mkfifo("/home/Oralsex/pfs_fifo", 0600), "mkfifo error");
 	int	fifo_fd;
 	errn1(fifo_fd = open("/home/Oralsex/pfs_fifo", O_RDONLY | O_NONBLOCK), "open fifo error");
 	set_promiscuous(packet_socket, net_if);
-	char	umac[6], qemu_mac[6], gate_mac[6], using=0;
+	char	qemu_mac[6], gate_mac[6], using=0;
+	int	u_usr;
 	short	sid;
 	while (1) {
 		char	*p = buf;
@@ -90,10 +105,11 @@ int main(void)
 				#endif
 			} else if (buf[0] == 'u') {
 				using = 1;
-				conv_mac(buf+2, umac);
-				conv_mac(buf+20, qemu_mac);
-				conv_mac(buf+38, gate_mac);
-				sscanf(buf+46, "%hx", &sid);
+				sscanf(buf+2, "%d", &u_usr);
+				int	offset = u_usr ? floor(log10(u_usr)) + 1 + 1 : 1 + 1;
+				conv_mac(buf+2+offset, qemu_mac);
+				conv_mac(buf+2+offset+18, gate_mac);
+				sscanf(buf+2+offset+36, "%hx", &sid);
 				#ifdef DEBUG
 				puts("processed using request");
 				#endif
@@ -106,19 +122,6 @@ int main(void)
 			char	*pppoe_d = msg+14, *pppoe_payload = pppoe_d + 6;
 			i = cli_index(msg+6, cli, cli_cnt);
 			if (pppoe_d[1] == 0x09) {
-				if (using && i < cli_cnt && !memcmp(cli[i].mac, umac, 6)) {
-					char	*p = pkt+14+1500, *h = pkt+14+1500;
-					p[0] = 0x05, p[1] = 0xcc, *((short*)(p+2)) = rev2(0x0004); p+=4;
-					h -= encap_ppp(rev2(0xc021), h);
-					h -= encap_pppoe(0x00, rev2(sid), rev2(p-h), h);
-					h -= encap_ether(gate_mac, qemu_mac, rev2(0x8864), h);
-					memcpy(sa_ll_s.sll_addr, gate_mac, 6);
-					errn1(sendto(packet_socket, h, p-h, 0, (struct sockaddr*)&sa_ll_s, sizeof(struct sockaddr_ll)), "sendto error");
-					using = 0;
-					#ifdef DEBUG
-					puts("the owner of the user&pass we're using is calling, sent lcp terminate request");
-					#endif
-				}
 				if (i == cli_cnt || cli[i].state!=pass_reviewed) {
 					if (i == cli_cnt)
 						memcpy(cli[cli_cnt++].mac, msg+6, 6);
@@ -138,6 +141,21 @@ int main(void)
 					printf("padi received, cli index %d\n", i);
 					#endif
 				}
+				if (using)
+					for (i=usr[u_usr].index;i<usr[u_usr].index + usr[u_usr].size;i++)
+						if (!memcmp(msg+6, cli[i].mac, 6)) {
+							char	*p = pkt+14+1500, *h = pkt+14+1500;
+							p[0] = 0x05, p[1] = 0xcc, *((short*)(p+2)) = rev2(0x0004); p+=4;
+							h -= encap_ppp(rev2(0xc021), h);
+							h -= encap_pppoe(0x00, rev2(sid), rev2(p-h), h);
+							h -= encap_ether(gate_mac, qemu_mac, rev2(0x8864), h);
+							memcpy(sa_ll_s.sll_addr, gate_mac, 6);
+							errn1(sendto(packet_socket, h, p-h, 0, (struct sockaddr*)&sa_ll_s, sizeof(struct sockaddr_ll)), "sendto error");
+							using = 0;
+							#ifdef DEBUG
+							puts("the owner of the user&pass we're using is calling, sent lcp terminate request");
+							#endif
+						}
 			} else if (pppoe_d[1] == 0x19) {
 				if (i < cli_cnt && cli[i].state == pado_sent) {
 					char	*p = pppoe_tag_extract(pppoe_payload, pkt, msg+len);
