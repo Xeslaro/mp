@@ -141,6 +141,10 @@ int main(void)
 					printf("padi received, cli index %d\n", i);
 					#endif
 				}
+				#ifdef DEBUG
+				if (i < cli_cnt && cli[i].state == pass_reviewed)
+					printf("padi received for cli index %d, but not processing since it's been entered the pass_reviewed state\n", i);
+				#endif
 				if (using)
 					for (i=usr[u_usr].index;i<usr[u_usr].index + usr[u_usr].size;i++)
 						if (!memcmp(msg+6, cli[i].mac, 6)) {
