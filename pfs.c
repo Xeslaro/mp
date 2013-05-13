@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <pcap/bpf.h>
 #include "common.h"
 #define net_if "eth0"
 #define DEBUG
@@ -54,6 +55,19 @@ int main(void)
 	sa_ll_b.sll_family = AF_PACKET, sa_ll_b.sll_protocol = rev2(ETH_P_ALL), sa_ll_b.sll_ifindex = get_ifindex(packet_socket, net_if);
 	sa_ll_s.sll_family = AF_PACKET, sa_ll_s.sll_halen = 6, sa_ll_s.sll_ifindex = sa_ll_b.sll_ifindex;
 	ok0(bind(packet_socket, (struct sockaddr*)&sa_ll_b, sizeof(struct sockaddr_ll)), "bind error");
+	struct bpf_program	packet_filter;
+	/*
+	  tcpdump -i eth0 -dd pppoes or pppoed
+	*/
+	struct bpf_insn		filter_data[] = {{0x28, 0, 0, 0x0000000c},
+						 {0x15, 2, 0, 0x00008864},
+						 {0x28, 0, 0, 0x00000014},
+						 {0x15, 0, 1, 0x00008863},
+						 {0x6, 0, 0, 0x0000ffff},
+						 {0x6, 0, 0, 0x00000000}};
+	packet_filter.bf_len = sizeof(filter_data) / sizeof(struct bpf_insn);
+	packet_filter.bf_insns = filter_data;
+	ok0(setsockopt(packet_socket, SOL_SOCKET, SO_ATTACH_FILTER, &packet_filter, sizeof(packet_filter)), "setsockopt error");
 	cli_info	cli[256];
 	int		i, cli_cnt=0;
 	for (i=0;i<256;i++)
